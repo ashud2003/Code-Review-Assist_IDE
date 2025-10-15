@@ -1,0 +1,850 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Code Review Assistant</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/loader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="toolbar">
+        <div class="logo">
+            <div class="logo-icon">⚡</div>
+            <span>Code Review Assistant</span>
+        </div>
+        <div class="toolbar-actions">
+            <button class="btn" onclick="document.getElementById('fileInput').click()">
+                <i class="fas fa-upload"></i> Upload
+            </button>
+            <button class="btn btn-primary" id="runReviewBtn" onclick="runReview()" disabled>
+                <i class="fas fa-play"></i> Analyze
+            </button>
+            <button class="btn" id="exportBtn" onclick="exportToPDF()" style="display:none;">
+                <i class="fas fa-file-pdf"></i> Export PDF
+            </button>
+            <div class="theme-toggle" onclick="toggleTheme()">
+                <span id="themeIcon">🌙</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="main-container">
+        <div class="editor-pane">
+            <div class="editor-header">
+                <div class="file-info">
+                    <div class="file-icon">📄</div>
+                    <span class="file-name" id="fileName">untitled.txt</span>
+                </div>
+                <div class="file-meta">
+                    <span id="fileSize">—</span>
+                    <span id="languageStatus">Plain Text</span>
+                </div>
+            </div>
+            <div id="editor-container"></div>
+            <div class="status-bar">
+                <div class="status-item">
+                    <span id="lineStatus">Ln 1, Col 1</span>
+                </div>
+                <div class="status-item">
+                    <span id="charCount">0 chars</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="review-pane">
+            <div class="review-header">
+                <h2><i class="fas fa-chart-line"></i> Review Report</h2>
+            </div>
+            <div class="review-content" id="reviewContent">
+                <div class="placeholder">
+                    <div class="placeholder-icon">🎯</div>
+                    <p><strong>Ready to analyze</strong></p>
+                    <p>Upload or paste code, then click Analyze</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <input type="file" id="fileInput" accept=".py,.js,.java,.cpp,.c,.cs,.rb,.go,.php,.ts,.html,.css,.sql">
+
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --bg-primary: #0a0a0f;
+            --bg-secondary: #13131a;
+            --bg-elevated: #1a1a24;
+            --bg-card: #1e1e2e;
+            --text-primary: #e4e4e7;
+            --text-secondary: #a1a1aa;
+            --text-muted: #71717a;
+            --accent: #6366f1;
+            --accent-hover: #4f46e5;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --error: #ef4444;
+            --border: #27272a;
+            --border-light: #3f3f46;
+            --shadow: rgba(0,0,0,0.5);
+        }
+        body.light-mode {
+            --bg-primary: #fafafa;
+            --bg-secondary: #f4f4f5;
+            --bg-elevated: #ffffff;
+            --bg-card: #ffffff;
+            --text-primary: #18181b;
+            --text-secondary: #52525b;
+            --text-muted: #a1a1aa;
+            --border: #e4e4e7;
+            --border-light: #d4d4d8;
+            --shadow: rgba(0,0,0,0.1);
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            height: 100vh;
+            overflow: hidden;
+        }
+        .toolbar {
+            height: 56px;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 24px;
+        }
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 700;
+        }
+        .logo-icon {
+            width: 32px;
+            height: 32px;
+            background: linear-gradient(135deg, var(--accent), #8b5cf6);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 12px rgba(99,102,241,0.5);
+        }
+        .toolbar-actions {
+            display: flex;
+            gap: 12px;
+        }
+        .btn {
+            padding: 10px 20px;
+            background: var(--bg-elevated);
+            color: var(--text-primary);
+            border: 1px solid var(--border-light);
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 200ms;
+            font-size: 13px;
+        }
+        .btn i { margin-right: 6px; }
+        .btn:hover:not(:disabled) {
+            border-color: var(--accent);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(99,102,241,0.5);
+        }
+        .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .btn-primary {
+            background: linear-gradient(135deg, var(--accent), #8b5cf6);
+            border: none;
+            color: white;
+        }
+        .theme-toggle {
+            width: 40px;
+            height: 40px;
+            background: var(--bg-elevated);
+            border: 1px solid var(--border-light);
+            border-radius: 10px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            transition: all 200ms;
+        }
+        .theme-toggle:hover {
+            border-color: var(--accent);
+            transform: translateY(-2px);
+        }
+        .main-container {
+            display: flex;
+            height: calc(100vh - 56px);
+        }
+        .editor-pane {
+            width: 60%;
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+        }
+        .editor-header {
+            padding: 16px 24px;
+            background: var(--bg-elevated);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+        }
+        .file-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .file-icon {
+            width: 24px;
+            height: 24px;
+            background: linear-gradient(135deg, var(--accent), #8b5cf6);
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+        }
+        .file-name {
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 600;
+        }
+        .file-meta {
+            display: flex;
+            gap: 16px;
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+        #editor-container { flex: 1; }
+        .status-bar {
+            height: 32px;
+            background: var(--bg-elevated);
+            border-top: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            padding: 0 16px;
+            gap: 20px;
+            font-size: 12px;
+            color: var(--text-secondary);
+            font-family: 'JetBrains Mono', monospace;
+        }
+        .review-pane {
+            width: 40%;
+            background: var(--bg-primary);
+            display: flex;
+            flex-direction: column;
+        }
+        .review-header {
+            padding: 20px 28px;
+            background: var(--bg-elevated);
+            border-bottom: 1px solid var(--border);
+        }
+        .review-header h2 {
+            font-size: 18px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .review-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 28px;
+        }
+        .review-content::-webkit-scrollbar { width: 10px; }
+        .review-content::-webkit-scrollbar-track { background: var(--bg-primary); }
+        .review-content::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 5px; }
+        .placeholder {
+            text-align: center;
+            padding: 80px 32px;
+            color: var(--text-secondary);
+        }
+        .placeholder-icon { font-size: 64px; margin-bottom: 20px; opacity: 0.5; }
+        .analyzing {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            gap: 24px;
+        }
+        .spinner {
+            width: 48px;
+            height: 48px;
+            border: 4px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        
+        /* Report Styles */
+        .report { animation: fadeIn 400ms ease; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        
+        .score-overview {
+            background: linear-gradient(135deg, var(--bg-card), var(--bg-elevated));
+            border: 1px solid var(--border-light);
+            border-radius: 16px;
+            padding: 28px;
+            margin-bottom: 24px;
+            position: relative;
+            overflow: hidden;
+        }
+        .score-overview::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, var(--accent), #8b5cf6, #ec4899);
+        }
+        .score-main {
+            display: flex;
+            align-items: center;
+            gap: 24px;
+            margin-bottom: 20px;
+        }
+        .score-circle {
+            width: 120px;
+            height: 120px;
+            position: relative;
+        }
+        .score-number {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 32px;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+        .score-details h3 {
+            font-size: 24px;
+            margin-bottom: 8px;
+            color: var(--text-primary);
+        }
+        .score-badge {
+            display: inline-block;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 700;
+        }
+        .badge-excellent { background: rgba(16,185,129,0.2); color: var(--success); }
+        .badge-good { background: rgba(99,102,241,0.2); color: var(--accent); }
+        .badge-average { background: rgba(245,158,11,0.2); color: var(--warning); }
+        .badge-poor { background: rgba(239,68,68,0.2); color: var(--error); }
+        
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+        }
+        .metric-item {
+            background: var(--bg-elevated);
+            padding: 16px;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+        }
+        .metric-label {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .metric-value {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--accent);
+        }
+        
+        .chart-container {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 24px;
+        }
+        .chart-container h3 {
+            font-size: 16px;
+            margin-bottom: 20px;
+            color: var(--text-primary);
+        }
+        
+        .section-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 20px;
+        }
+        .section-card h3 {
+            font-size: 18px;
+            margin-bottom: 16px;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .section-card h3 i {
+            color: var(--accent);
+        }
+        .section-card ul {
+            list-style: none;
+            padding: 0;
+        }
+        .section-card li {
+            padding: 12px 0;
+            padding-left: 28px;
+            position: relative;
+            color: var(--text-secondary);
+            line-height: 1.6;
+            border-bottom: 1px solid var(--border);
+        }
+        .section-card li:last-child {
+            border-bottom: none;
+        }
+        .section-card li::before {
+            content: '▸';
+            position: absolute;
+            left: 8px;
+            color: var(--accent);
+            font-size: 14px;
+        }
+        .section-card code {
+            background: var(--bg-elevated);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 12px;
+            color: var(--accent);
+            font-family: 'JetBrains Mono', monospace;
+        }
+        
+        .chart-container {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 24px;
+        }
+        .chart-container h3 {
+            font-size: 16px;
+            margin-bottom: 20px;
+            color: var(--text-primary);
+        }
+        .improvement-card h4 {
+            font-size: 15px;
+            margin-bottom: 12px;
+            color: var(--accent);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .improvement-card p {
+            color: var(--text-secondary);
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        .improvement-card pre {
+            background: var(--bg-elevated);
+            padding: 16px;
+            border-radius: 8px;
+            margin-top: 12px;
+            overflow-x: auto;
+            font-size: 12px;
+        }
+        
+        input[type="file"] { display: none; }
+    </style>
+
+    <script>
+        let editor, currentFileName = 'untitled.txt', currentLanguage = 'plaintext';
+        let currentReviewData = null;
+        
+        require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs' } });
+        require(['vs/editor/editor.main'], function () {
+            editor = monaco.editor.create(document.getElementById('editor-container'), {
+                value: '// Paste or upload your code here\n// Click "Analyze" to get AI-powered insights',
+                language: 'javascript',
+                theme: 'vs-dark',
+                fontSize: 14,
+                fontFamily: 'JetBrains Mono, monospace',
+                minimap: { enabled: true },
+                automaticLayout: true,
+                padding: { top: 20, bottom: 20 }
+            });
+
+            editor.onDidChangeCursorPosition((e) => {
+                document.getElementById('lineStatus').textContent = `Ln ${e.position.lineNumber}, Col ${e.position.column}`;
+            });
+
+            editor.onDidChangeModelContent(() => {
+                const content = editor.getValue().trim();
+                document.getElementById('charCount').textContent = `${content.length} chars`;
+                document.getElementById('runReviewBtn').disabled = !content;
+            });
+        });
+
+        document.getElementById('fileInput').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            currentFileName = file.name;
+            document.getElementById('fileName').textContent = file.name;
+            document.getElementById('fileSize').textContent = `${(file.size / 1024).toFixed(1)} KB`;
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                editor.setValue(event.target.result);
+                const ext = file.name.split('.').pop().toLowerCase();
+                const langMap = {
+                    'py': 'python', 'js': 'javascript', 'ts': 'typescript',
+                    'java': 'java', 'cpp': 'cpp', 'c': 'c', 'cs': 'csharp',
+                    'rb': 'ruby', 'go': 'go', 'php': 'php', 'html': 'html',
+                    'css': 'css', 'sql': 'sql'
+                };
+                currentLanguage = langMap[ext] || 'plaintext';
+                monaco.editor.setModelLanguage(editor.getModel(), currentLanguage);
+                document.getElementById('languageStatus').textContent = currentLanguage.charAt(0).toUpperCase() + currentLanguage.slice(1);
+            };
+            reader.readAsText(file);
+        });
+
+        async function runReview() {
+            const code = editor.getValue();
+            if (!code.trim()) return;
+            const reviewContent = document.getElementById('reviewContent');
+            reviewContent.innerHTML = '<div class="analyzing"><div class="spinner"></div><div>Analyzing your code with AI...</div></div>';
+            
+            const blob = new Blob([code], { type: 'text/plain' });
+            const formData = new FormData();
+            formData.append('file', blob, currentFileName);
+            
+            try {
+                const response = await fetch('/api/review', { method: 'POST', body: formData });
+                const data = await response.json();
+                if (data.success) {
+                    currentReviewData = data;
+                    displayEnhancedReport(data.review, data.filename, data.language);
+                    document.getElementById('exportBtn').style.display = 'block';
+                } else {
+                    reviewContent.innerHTML = `<div class="section-card"><h3><i class="fas fa-exclamation-circle"></i> Error</h3><p>${data.error}</p></div>`;
+                }
+            } catch (error) {
+                reviewContent.innerHTML = `<div class="section-card"><h3><i class="fas fa-exclamation-circle"></i> Error</h3><p>${error.message}</p></div>`;
+            }
+        }
+
+        function displayEnhancedReport(reviewText, filename, language) {
+            const reviewContent = document.getElementById('reviewContent');
+            
+            // Extract score
+            const scoreMatch = reviewText.match(/(?:Code Quality Score|Score).*?([\d.]+)(?:\/10|\s*out of 10)/i);
+            const score = scoreMatch ? parseFloat(scoreMatch[1]) : 7.0;
+            
+            // Determine badge
+            let badge = 'badge-average';
+            let badgeText = 'Average';
+            let emoji = '⚠️';
+            if (score >= 9) { badge = 'badge-excellent'; badgeText = 'Excellent'; emoji = '🌟'; }
+            else if (score >= 7) { badge = 'badge-good'; badgeText = 'Good'; emoji = '✅'; }
+            else if (score < 5) { badge = 'badge-poor'; badgeText = 'Needs Work'; emoji = '❌'; }
+            
+            // Parse sections
+            const sections = parseReviewSections(reviewText);
+            
+            let html = '<div class="report">';
+            
+            // Score Overview
+            html += `
+                <div class="score-overview">
+                    <div class="score-main">
+                        <div class="score-circle">
+                            <canvas id="scoreChart"></canvas>
+                            <div class="score-number">${score}</div>
+                        </div>
+                        <div class="score-details">
+                            <h3>${emoji} Code Quality Score</h3>
+                            <span class="score-badge ${badge}">${badgeText}</span>
+                            <p style="margin-top:12px; color:var(--text-secondary); font-size:14px;">
+                                File: <strong>${filename}</strong> | Language: <strong>${language}</strong>
+                            </p>
+                        </div>
+                    </div>
+                    <div class="metrics-grid">
+                        <div class="metric-item">
+                            <div class="metric-label">Readability</div>
+                            <div class="metric-value">${Math.max(1, score - 0.5).toFixed(1)}</div>
+                        </div>
+                        <div class="metric-item">
+                            <div class="metric-label">Modularity</div>
+                            <div class="metric-value">${Math.max(1, score - 1).toFixed(1)}</div>
+                        </div>
+                        <div class="metric-item">
+                            <div class="metric-label">Best Practices</div>
+                            <div class="metric-value">${Math.max(1, score - 0.8).toFixed(1)}</div>
+                        </div>
+                        <div class="metric-item">
+                            <div class="metric-label">Code Safety</div>
+                            <div class="metric-value">${Math.max(1, 10 - score/2).toFixed(1)}</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Radar Chart
+            html += `
+                <div class="chart-container">
+                    <h3><i class="fas fa-chart-radar"></i> Analysis Breakdown</h3>
+                    <canvas id="radarChart" style="max-height:300px;"></canvas>
+                </div>
+            `;
+            
+            // Sections
+            const iconMap = {
+                'readability': 'fa-eye',
+                'modularity': 'fa-cubes',
+                'bugs': 'fa-bug',
+                'best practices': 'fa-check-circle',
+                'improvement': 'fa-lightbulb',
+                'suggestions': 'fa-magic'
+            };
+            
+            sections.forEach(section => {
+                const key = section.title.toLowerCase();
+                let icon = 'fa-file-alt';
+                for (let k in iconMap) {
+                    if (key.includes(k)) {
+                        icon = iconMap[k];
+                        break;
+                    }
+                }
+                
+                if (key.includes('improvement') || key.includes('suggestion')) {
+                    // Special styling for improvements
+                    section.items.forEach((item, idx) => {
+                        html += `
+                            <div class="improvement-card">
+                                <h4><i class="fas fa-lightbulb"></i> Suggestion ${idx + 1}</h4>
+                                <p>${item}</p>
+                            </div>
+                        `;
+                    });
+                } else {
+                    html += `
+                        <div class="section-card">
+                            <h3><i class="fas ${icon}"></i> ${section.title}</h3>
+                            <ul>
+                                ${section.items.map(item => `<li>${item}</li>`).join('')}
+                            </ul>
+                        </div>
+                    `;
+                }
+            });
+            
+            html += '</div>';
+            reviewContent.innerHTML = html;
+            
+            // Create charts
+            setTimeout(() => {
+                createScoreChart(score);
+                createRadarChart(score);
+            }, 200);
+
+            // Re-create charts when theme changes
+            const themeObserver = new MutationObserver(() => {
+                setTimeout(() => {
+                    createRadarChart(score);
+                }, 100);
+            });
+            themeObserver.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+        }
+
+        function parseReviewSections(text) {
+            const sections = [];
+            const lines = text.split('\n');
+            let currentSection = null;
+            
+            lines.forEach(line => {
+                line = line.trim();
+                if (!line) return;
+                
+                // Check if it's a header (ends with ** or starts with number)
+                if (line.match(/^\d+\.\s+(.+?)(\*\*)?$/) || line.match(/^\*\*(.+?)\*\*$/)) {
+                    if (currentSection) sections.push(currentSection);
+                    const title = line.replace(/^\d+\.\s+/, '').replace(/\*\*/g, '').trim();
+                    currentSection = { title, items: [] };
+                } else if (line.startsWith('*') || line.startsWith('-')) {
+                    if (currentSection) {
+                        currentSection.items.push(line.replace(/^[*-]\s+/, '').replace(/\*\*/g, ''));
+                    }
+                } else if (currentSection && line.length > 10) {
+                    currentSection.items.push(line.replace(/\*\*/g, ''));
+                }
+            });
+            
+            if (currentSection) sections.push(currentSection);
+            return sections;
+        }
+
+        function createScoreChart(score) {
+            const ctx = document.getElementById('scoreChart');
+            if (!ctx) return;
+            
+            new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    datasets: [{
+                        data: [score, 10 - score],
+                        backgroundColor: ['#6366f1', '#27272a'],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    cutout: '80%',
+                    plugins: { legend: { display: false }, tooltip: { enabled: false } }
+                }
+            });
+        }
+
+        function createRadarChart(score) {
+            const ctx = document.getElementById('radarChart');
+            if (!ctx) return;
+
+            // Destroy existing chart if it exists
+            if (window.radarChartInstance) {
+                window.radarChartInstance.destroy();
+            }
+
+            const isLightMode = document.body.classList.contains('light-mode');
+            const accentColor = getComputedStyle(document.body).getPropertyValue('--accent') || '#6366f1';
+            const bgColor = getComputedStyle(document.body).getPropertyValue('--bg-primary') || '#0a0a0f';
+            const textColor = getComputedStyle(document.body).getPropertyValue('--text-primary') || '#e4e4e7';
+
+            window.radarChartInstance = new Chart(ctx, {
+                type: 'radar',
+                data: {
+                    labels: ['Readability', 'Modularity', 'Best Practices', 'Code Safety', 'Performance'],
+                    datasets: [{
+                        label: 'Code Analysis',
+                        data: [
+                            Math.max(1, score - 0.5),
+                            Math.max(1, score - 1),
+                            Math.max(1, score - 0.8),
+                            Math.max(1, 10 - score/2),
+                            Math.max(1, score - 0.3)
+                        ],
+                        backgroundColor: isLightMode ? 'rgba(99, 102, 241, 0.1)' : 'rgba(99, 102, 241, 0.2)',
+                        borderColor: accentColor,
+                        borderWidth: 2,
+                        pointBackgroundColor: accentColor,
+                        pointBorderColor: isLightMode ? bgColor : '#ffffff',
+                        pointHoverBackgroundColor: isLightMode ? '#ffffff' : bgColor,
+                        pointHoverBorderColor: accentColor
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        r: {
+                            beginAtZero: true,
+                            max: 10,
+                            ticks: {
+                                color: getComputedStyle(document.body).getPropertyValue('--text-muted') || '#a1a1aa',
+                                backdropColor: 'transparent',
+                                stepSize: 2
+                            },
+                            grid: {
+                                color: getComputedStyle(document.body).getPropertyValue('--border') || '#27272a',
+                                lineWidth: 1
+                            },
+                            pointLabels: {
+                                color: getComputedStyle(document.body).getPropertyValue('--text-primary') || '#e4e4e7',
+                                font: {
+                                    size: 12,
+                                    weight: '500'
+                                }
+                            },
+                            angleLines: {
+                                color: getComputedStyle(document.body).getPropertyValue('--border') || '#27272a'
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    }
+                }
+            });
+        }
+
+        async function exportToPDF() {
+            try {
+                const element = document.getElementById('reviewContent');
+
+                // Show loading message
+                const exportBtn = document.getElementById('exportBtn');
+                const originalText = exportBtn.innerHTML;
+                exportBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating...';
+                exportBtn.disabled = true;
+
+                // Wait a bit for charts to render
+                await new Promise(resolve => setTimeout(resolve, 1000));
+
+                // Use html2pdf to generate PDF
+                const opt = {
+                    margin: 1,
+                    filename: `code-review-${currentFileName.replace(/\.[^/.]+$/, '')}.pdf`,
+                    image: { type: 'jpeg', quality: 0.98 },
+                    html2canvas: {
+                        scale: 2,
+                        useCORS: true,
+                        logging: false,
+                        backgroundColor: getComputedStyle(document.body).getPropertyValue('--bg-primary') || '#0a0a0f'
+                    },
+                    jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
+                };
+
+                await html2pdf().set(opt).from(element).save();
+
+                // Reset button
+                exportBtn.innerHTML = originalText;
+                exportBtn.disabled = false;
+
+                // Show success message
+                alert('PDF exported successfully!');
+            } catch (error) {
+                console.error('PDF Export Error:', error);
+                alert('Failed to export PDF. Error: ' + error.message);
+                document.getElementById('exportBtn').innerHTML = '<i class="fas fa-file-pdf"></i> Export PDF';
+                document.getElementById('exportBtn').disabled = false;
+            }
+        }
+
+        function toggleTheme() {
+            const body = document.body;
+            const icon = document.getElementById('themeIcon');
+            if (body.classList.contains('light-mode')) {
+                body.classList.remove('light-mode');
+                icon.textContent = '🌙';
+                if (editor) monaco.editor.setTheme('vs-dark');
+            } else {
+                body.classList.add('light-mode');
+                icon.textContent = '☀️';
+                if (editor) monaco.editor.setTheme('vs');
+            }
+        }
+    </script>
+</body>
+</html>
