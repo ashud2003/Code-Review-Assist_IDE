@@ -27,7 +27,6 @@ python app.py
 http://localhost:5000
 ```
 <img width="1919" height="983" alt="image" src="https://github.com/user-attachments/assets/f1b3e2f7-4324-45cc-a2af-d68c6dfdfcc7" />
-<img width="1093" height="10150" alt="127 0 0 1_50692_" src="https://github.com/user-attachments/assets/dafbb211-4463-4e32-a800-abc059261031" />
 
 ## API Endpoints
 
