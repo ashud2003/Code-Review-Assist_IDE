@@ -1,6 +1,9 @@
 # Code Review Assistant
 
 The Introduction video is attached in the repository named as Project_Introduction_video.mp4
+https://github.com/ashud2003/Code-Review-Assist_IDE/blob/main/Project_Introduction_Video.mp4
+
+
 <img width="1919" height="989" alt="image" src="https://github.com/user-attachments/assets/c826dd21-8fde-4b9d-8662-0d075db211bb" />
 
 
